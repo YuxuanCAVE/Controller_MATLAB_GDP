@@ -1,0 +1,10 @@
+Lateral controller      : mpc
+Reference speed mode    : profile
+Reference speed file    : data\reference_velocity\referencePath_Velocity_peak_velocity_5.mat
+Compared longitudinal controllers:
+  - pid
+  - lqr
+
+Controller   RMS_CTE[m]   Peak_CTE[m]  RMS_Epsi[deg] RMS_Verr     Final_v     
+pid          5.131        8.739        65.049       0.542        1.916       
+lqr          5.393        10.691       72.177       0.546        2.342       

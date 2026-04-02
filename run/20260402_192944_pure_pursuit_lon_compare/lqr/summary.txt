@@ -1,0 +1,8 @@
+Controller: pure_pursuit + lqr
+RMS cross-track error  : 0.708 m
+Peak cross-track error : 2.066 m
+RMS heading error      : 3.770 deg
+RMS speed error        : 0.287 m/s
+Peak speed error       : 3.271 m/s
+Final speed            : 1.449 m/s
+Run directory          : C:\ControllerMatlab_GDP\run\20260402_192944_pure_pursuit_lon_compare\lqr

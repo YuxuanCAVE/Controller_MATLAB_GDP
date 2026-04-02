@@ -1,0 +1,10 @@
+Lateral controller      : pure_pursuit
+Reference speed mode    : profile
+Reference speed file    : data\reference_velocity\referencePath_Velocity_peak_velocity_5.mat
+Compared longitudinal controllers:
+  - pid
+  - lqr
+
+Controller   RMS_CTE[m]   Peak_CTE[m]  RMS_Epsi[deg] RMS_Verr     Final_v     
+pid          0.708        2.067        3.772        0.307        1.634       
+lqr          0.708        2.066        3.770        0.287        1.449       

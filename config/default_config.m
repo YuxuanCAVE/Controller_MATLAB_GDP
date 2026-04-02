@@ -3,7 +3,7 @@ function cfg = default_config()
     cfg.controller.longitudinal = "lqr";    % "pid" | "lqr"
 
     cfg.sim.dt = 0.05;
-    cfg.sim.T_end = 40;
+    cfg.sim.T_end = 150;
     cfg.sim.progress_window = 80;
 
     cfg.ref.path_file = fullfile('data', 'path_ref.mat');
@@ -16,9 +16,9 @@ function cfg = default_config()
     cfg.vehicle.delay.longitudinal_s = 0.1;
 
     cfg.speed.mode = "profile";   % "constant" | "profile"
-    cfg.speed.constant_value = 9.0;
+    cfg.speed.constant_value = 7.0;
     cfg.speed.profile_file = fullfile( ...
-        'data', 'reference_velocity', 'referencePath_Velocity_peak_velocity_5.mat');
+        'data', 'reference_velocity', 'referencePath_Velocity_peak_velocity_7.mat');
 
     cfg.stanley.k_cte = 1.8;
     cfg.stanley.k_soft = 2.0;
@@ -31,16 +31,16 @@ function cfg = default_config()
     cfg.pure_pursuit.k_pp = 1.0;
     cfg.pure_pursuit.delta_ff_gain = 0.8;
 
-    cfg.mpc.N = 30;
-    cfg.mpc.Q = diag([20, 10, 50, 50]);
-    cfg.mpc.R = 6.2;
-    cfg.mpc.Rd = 14.0;
+    cfg.mpc.N = 25;
+    cfg.mpc.Q = diag([15, 12, 8, 10]);
+    cfg.mpc.R = 5;
+    cfg.mpc.Rd = 15.0;
     cfg.mpc.kappa_ff_gain = 0.5;
     cfg.mpc.max_steer = cfg.vehicle.max_steer;
 
     cfg.lon_pid.kp = 0.8;
-    cfg.lon_pid.ki = 0.25;
-    cfg.lon_pid.kd = 0.00;
+    cfg.lon_pid.ki = 0.30;
+    cfg.lon_pid.kd = 0.02;
     cfg.lon_pid.a_min = -3.0;
     cfg.lon_pid.a_max = 2.0;
     cfg.lon_pid.i_term = 0;

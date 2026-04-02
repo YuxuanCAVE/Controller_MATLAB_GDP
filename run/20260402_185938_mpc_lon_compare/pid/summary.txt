@@ -1,0 +1,8 @@
+Controller: mpc + pid
+RMS cross-track error  : 5.131 m
+Peak cross-track error : 8.739 m
+RMS heading error      : 65.049 deg
+RMS speed error        : 0.542 m/s
+Peak speed error       : 3.271 m/s
+Final speed            : 1.916 m/s
+Run directory          : C:\ControllerMatlab_GDP\run\20260402_185938_mpc_lon_compare\pid

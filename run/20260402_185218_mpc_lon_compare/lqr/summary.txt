@@ -1,0 +1,8 @@
+Controller: mpc + lqr
+RMS cross-track error  : 5.791 m
+Peak cross-track error : 9.660 m
+RMS heading error      : 74.955 deg
+RMS speed error        : 0.539 m/s
+Peak speed error       : 3.271 m/s
+Final speed            : 4.015 m/s
+Run directory          : C:\ControllerMatlab_GDP\run\20260402_185218_mpc_lon_compare\lqr

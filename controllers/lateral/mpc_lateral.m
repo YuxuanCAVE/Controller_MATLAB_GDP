@@ -1,4 +1,4 @@
-function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window)
+function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window, steer_buffer)
     x = state.x;
     y = state.y;
     yaw = state.yaw;
@@ -12,6 +12,9 @@ function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window)
     end
     if nargin < 7
         window = [];
+    end
+    if nargin < 8
+        steer_buffer = [];
     end
 
     % Use projected reference point instead of nearest waypoint only
@@ -48,18 +51,72 @@ function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window)
            Cf / M;
            lf * Cf / Iz];
 
-    g_c = [0;
-           -vx * kappa0;
-           0;
-           0];
-
-    A = eye(4) + dt * A_c;
-    B = dt * B_c;
-    g = dt * g_c;
-
+    % ----------------------------------------------------------------
+    % EXACT DISCRETIZATION using matrix exponential (ZOH)
+    % ----------------------------------------------------------------
     nx = 4;
     nu = 1;
     N = p.N;
+
+    % Discretize A and B using augmented matrix with unit curvature
+    % so we can scale g per step for curvature preview
+    g_c_unit = [0; -vx; 0; 0];   % g_c per unit curvature
+
+    M_aug = zeros(nx + nu + 1, nx + nu + 1);
+    M_aug(1:nx, 1:nx) = A_c;
+    M_aug(1:nx, nx+1) = B_c;
+    M_aug(1:nx, nx+2) = g_c_unit;
+
+    E = expm(M_aug * dt);
+    A = E(1:nx, 1:nx);
+    B = E(1:nx, nx+1);
+    g_unit = E(1:nx, nx+2);   % g per unit curvature — scale by kappa
+    % ----------------------------------------------------------------
+
+    % ----------------------------------------------------------------
+    % CURVATURE PREVIEW along the prediction horizon
+    % Estimate where the vehicle will be at each future step and
+    % look up the path curvature there.
+    % ----------------------------------------------------------------
+    n_ref = numel(ref.kappa);
+
+    % Estimate local path spacing from reference points near current index
+    i_lo = max(1, idx - 1);
+    i_hi = min(n_ref, idx + 1);
+    ds_local = hypot(ref.x(i_hi) - ref.x(i_lo), ref.y(i_hi) - ref.y(i_lo)) / (i_hi - i_lo);
+    ds_local = max(ds_local, 0.01);   % guard against degenerate spacing
+
+    % Indices per prediction step
+    idx_per_step = max(1, round(vx * dt / ds_local));
+
+    % Build curvature vector for the full horizon (including delay steps)
+    n_delay = 0;
+    if ~isempty(steer_buffer) && numel(steer_buffer) > 1
+        n_delay = numel(steer_buffer) - 1;
+    end
+
+    kappa_horizon = zeros(n_delay + N, 1);
+    for k = 1:(n_delay + N)
+        future_idx = min(idx + k * idx_per_step, n_ref);
+        kappa_horizon(k) = ref.kappa(future_idx);
+    end
+    % ----------------------------------------------------------------
+
+    % ----------------------------------------------------------------
+    % DELAY COMPENSATION with curvature preview
+    % ----------------------------------------------------------------
+    if n_delay > 0
+        for d = 1:n_delay
+            u_pending = steer_buffer(d);
+            g_d = g_unit * kappa_horizon(d);
+            x0 = A * x0 + B * u_pending + g_d;
+        end
+        delta_prev = steer_buffer(n_delay);
+    end
+    % ----------------------------------------------------------------
+
+    % Curvature for the prediction horizon (after delay)
+    kappa_pred = kappa_horizon(n_delay+1 : n_delay+N);
 
     Qbar = kron(eye(N), p.Q);
     Rbar = kron(eye(N), p.R);
@@ -76,7 +133,9 @@ function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window)
         for j = 1:i
             A_ij = A^(i-j);
             Su(row, (j-1)*nu+1:j*nu) = A_ij * B;
-            g_sum = g_sum + A_ij * g;
+            % Time-varying curvature disturbance
+            g_j = g_unit * kappa_pred(j);
+            g_sum = g_sum + A_ij * g_j;
         end
         Sg(row, :) = g_sum;
     end
@@ -94,6 +153,7 @@ function delta = mpc_lateral(state, ref, veh, dt, p, idx_hint, window)
     %cost function
     f = Su' * Qbar * x_free - p.Rd * (D' * d0);
 
+    % kappa_ff_gain = 0: curvature fully handled inside QP via g
     delta_ff = p.kappa_ff_gain * atan(L * kappa0);
     lb = -p.max_steer * ones(N, 1) - delta_ff;
     ub =  p.max_steer * ones(N, 1) - delta_ff;

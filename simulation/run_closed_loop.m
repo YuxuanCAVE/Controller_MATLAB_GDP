@@ -78,7 +78,7 @@ function result = run_closed_loop(cfg, ref, veh)
 
             case "mpc"
                 delta_cmd = mpc_lateral(state, ref, veh, dt, cfg.mpc, ...
-                    idx_progress, cfg.sim.progress_window);
+                    idx_progress, cfg.sim.progress_window, steer_delay_buffer);
 
             otherwise
                 error('Unknown lateral controller: %s', cfg.controller.lateral);

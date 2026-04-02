@@ -1,0 +1,10 @@
+Lateral controller      : mpc
+Reference speed mode    : constant
+Reference speed value   : 7.000 m/s
+Compared longitudinal controllers:
+  - pid
+  - lqr
+
+Controller   RMS_CTE[m]   Peak_CTE[m]  RMS_Epsi[deg] RMS_Verr     Final_v     
+pid          1.098        3.922        11.519       1.350        6.979       
+lqr          1.175        3.927        12.048       1.387        7.006       
