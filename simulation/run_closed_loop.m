@@ -1,6 +1,11 @@
 function result = run_closed_loop(cfg, ref, veh)
     dt = cfg.sim.dt;
-    Nsim = round(cfg.sim.T_end / dt);
+    if isfield(cfg.sim, 'max_travel_time') && ~isempty(cfg.sim.max_travel_time)
+        max_travel_time = cfg.sim.max_travel_time;
+    else
+        max_travel_time = cfg.sim.T_end;
+    end
+    Nsim = round(max_travel_time / dt);
     steer_delay_steps = max(round(cfg.vehicle.delay.steer_s / dt), 0);
     lon_delay_steps = max(round(cfg.vehicle.delay.longitudinal_s / dt), 0);
 
@@ -58,6 +63,8 @@ function result = run_closed_loop(cfg, ref, veh)
     log.e_psi = zeros(Nsim, 1);
 
     stop_idx = Nsim;
+    goal_reached = false;
+    termination_reason = "max_travel_time";
 
     for k = 1:Nsim
         [idx_near, e_ct, e_psi] = track_errors( ...
@@ -134,6 +141,8 @@ function result = run_closed_loop(cfg, ref, veh)
 
         if idx_progress >= numel(ref.x) - 2 && hypot(state.x - ref.x(end), state.y - ref.y(end)) < 1.5
             stop_idx = k;
+            goal_reached = true;
+            termination_reason = "goal_reached";
             break;
         end
     end
@@ -152,6 +161,11 @@ function result = run_closed_loop(cfg, ref, veh)
     result.metrics.rms_speed_error = sqrt(mean(speed_error.^2));
     result.metrics.peak_speed_error = max(abs(speed_error));
     result.metrics.final_speed = log.v(end);
+    result.metrics.single_loop_time_s = stop_idx * dt;
+    result.metrics.max_travel_time_s = max_travel_time;
+    result.metrics.goal_reached = goal_reached;
+    result.metrics.timeout = ~goal_reached;
+    result.metrics.termination_reason = termination_reason;
     result.metrics.lateral_controller = cfg.controller.lateral;
     result.metrics.longitudinal_controller = cfg.controller.longitudinal;
     result.metrics.controller = sprintf('%s + %s', ...

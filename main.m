@@ -71,6 +71,8 @@ else
     fprintf('RMS cross-track error  : %.3f m\n', result.metrics.rms_cte);
     fprintf('Peak cross-track error : %.3f m\n', result.metrics.peak_cte);
     fprintf('RMS heading error      : %.3f deg\n', result.metrics.rms_epsi_deg);
+    fprintf('Single loop time       : %.3f s\n', result.metrics.single_loop_time_s);
+    fprintf('Termination reason     : %s\n', char(result.metrics.termination_reason));
     fprintf('Saved run outputs to   : %s\n', run_dir);
 end
 
@@ -83,6 +85,11 @@ fprintf(fid, 'RMS heading error      : %.3f deg\n', result.metrics.rms_epsi_deg)
 fprintf(fid, 'RMS speed error        : %.3f m/s\n', result.metrics.rms_speed_error);
 fprintf(fid, 'Peak speed error       : %.3f m/s\n', result.metrics.peak_speed_error);
 fprintf(fid, 'Final speed            : %.3f m/s\n', result.metrics.final_speed);
+fprintf(fid, 'Single loop time       : %.3f s\n', result.metrics.single_loop_time_s);
+fprintf(fid, 'Max travel time        : %.3f s\n', result.metrics.max_travel_time_s);
+fprintf(fid, 'Goal reached           : %d\n', result.metrics.goal_reached);
+fprintf(fid, 'Timeout                : %d\n', result.metrics.timeout);
+fprintf(fid, 'Termination reason     : %s\n', char(result.metrics.termination_reason));
 fprintf(fid, 'Run directory          : %s\n', run_dir);
 fclose(fid);
 end

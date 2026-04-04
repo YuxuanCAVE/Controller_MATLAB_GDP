@@ -4,6 +4,7 @@ function cfg = default_config()
 
     cfg.sim.dt = 0.05;
     cfg.sim.T_end = 150;
+    cfg.sim.max_travel_time = cfg.sim.T_end;
     cfg.sim.progress_window = 80;
 
     cfg.ref.path_file = fullfile('data', 'path_ref.mat');

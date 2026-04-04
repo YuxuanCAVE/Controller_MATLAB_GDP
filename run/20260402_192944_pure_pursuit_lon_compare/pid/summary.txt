@@ -1,8 +1,0 @@
-Controller: pure_pursuit + pid
-RMS cross-track error  : 0.708 m
-Peak cross-track error : 2.067 m
-RMS heading error      : 3.772 deg
-RMS speed error        : 0.307 m/s
-Peak speed error       : 3.271 m/s
-Final speed            : 1.634 m/s
-Run directory          : C:\ControllerMatlab_GDP\run\20260402_192944_pure_pursuit_lon_compare\pid

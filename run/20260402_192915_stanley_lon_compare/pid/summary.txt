@@ -1,8 +1,0 @@
-Controller: stanley + pid
-RMS cross-track error  : 62.934 m
-Peak cross-track error : 96.539 m
-RMS heading error      : 49.037 deg
-RMS speed error        : 0.395 m/s
-Peak speed error       : 4.538 m/s
-Final speed            : 0.531 m/s
-Run directory          : C:\ControllerMatlab_GDP\run\20260402_192915_stanley_lon_compare\pid

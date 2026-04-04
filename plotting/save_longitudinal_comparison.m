@@ -96,16 +96,16 @@ function write_comparison_summary(cfg, comparison, run_dir)
         fprintf(fid, '  - %s\n', controllers{i});
     end
     fprintf(fid, '\n');
-    fprintf(fid, '%-12s %-12s %-12s %-12s %-12s %-12s\n', ...
+    fprintf(fid, '%-12s %-12s %-12s %-12s %-12s %-12s %-12s\n', ...
         'Controller', 'RMS_CTE[m]', 'Peak_CTE[m]', 'RMS_Epsi[deg]', ...
-        'RMS_Verr', 'Final_v');
+        'RMS_Verr', 'Final_v', 'Loop_t[s]');
 
     for i = 1:numel(controllers)
         name = controllers{i};
         metrics = comparison.results.(name).metrics;
-        fprintf(fid, '%-12s %-12.3f %-12.3f %-12.3f %-12.3f %-12.3f\n', ...
+        fprintf(fid, '%-12s %-12.3f %-12.3f %-12.3f %-12.3f %-12.3f %-12.3f\n', ...
             name, metrics.rms_cte, metrics.peak_cte, metrics.rms_epsi_deg, ...
-            metrics.rms_speed_error, metrics.final_speed);
+            metrics.rms_speed_error, metrics.final_speed, metrics.single_loop_time_s);
     end
 
     fclose(fid);

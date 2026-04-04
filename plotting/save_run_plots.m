@@ -1,6 +1,13 @@
 function save_run_plots(cfg, ref, result, run_dir)
     log = result.log;
     metrics = result.metrics;
+    run_info = struct( ...
+        'single_loop_time_s', metrics.single_loop_time_s, ...
+        'max_travel_time_s', metrics.max_travel_time_s, ...
+        'goal_reached', metrics.goal_reached, ...
+        'timeout', metrics.timeout, ...
+        'termination_reason', metrics.termination_reason, ...
+        'controller', metrics.controller);
     fig_visible = 'off';
     keep_open = false;
     if usejava('desktop')
@@ -19,8 +26,9 @@ function save_run_plots(cfg, ref, result, run_dir)
     xlabel('X [m]');
     ylabel('Y [m]');
     legend('Reference path', 'Vehicle trajectory', 'Start', 'End', 'Location', 'best');
-    title(sprintf('Path Tracking using %s + %s', ...
-        char(cfg.controller.lateral), char(cfg.controller.longitudinal)));
+    title(sprintf('Path Tracking using %s + %s | loop time = %.2f s | %s', ...
+        char(cfg.controller.lateral), char(cfg.controller.longitudinal), ...
+        metrics.single_loop_time_s, char(metrics.termination_reason)));
 
     fig2 = figure('Color', 'w', 'Name', 'Tracking Errors', 'Visible', fig_visible);
     subplot(3, 1, 1);
@@ -114,6 +122,8 @@ function save_run_plots(cfg, ref, result, run_dir)
     savefig(fig4, fullfile(run_dir, 'lateral_dynamics.fig'));
 
     save(fullfile(run_dir, 'cfg.mat'), 'cfg');
+    save(fullfile(run_dir, 'run_info.mat'), 'run_info');
+    write_run_info(run_info, run_dir);
 
     if ~keep_open
         close(fig1);
@@ -121,4 +131,15 @@ function save_run_plots(cfg, ref, result, run_dir)
         close(fig3);
         close(fig4);
     end
+end
+
+function write_run_info(run_info, run_dir)
+    fid = fopen(fullfile(run_dir, 'run_info.txt'), 'w');
+    fprintf(fid, 'Controller            : %s\n', char(run_info.controller));
+    fprintf(fid, 'Single loop time      : %.3f s\n', run_info.single_loop_time_s);
+    fprintf(fid, 'Max travel time       : %.3f s\n', run_info.max_travel_time_s);
+    fprintf(fid, 'Goal reached          : %d\n', run_info.goal_reached);
+    fprintf(fid, 'Timeout               : %d\n', run_info.timeout);
+    fprintf(fid, 'Termination reason    : %s\n', char(run_info.termination_reason));
+    fclose(fid);
 end
