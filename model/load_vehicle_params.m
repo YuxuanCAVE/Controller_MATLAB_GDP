@@ -23,8 +23,7 @@ function veh = load_vehicle_params(accel_map_file, brake_map_file)
     veh.tire.front.Calpha = veh.tire.front.B * veh.tire.front.C * veh.tire.front.D;
     veh.tire.rear.Calpha = veh.tire.rear.B * veh.tire.rear.C * veh.tire.rear.D;
 
-    %all the data we're using for magic formula are the assuptions
-
+    % ── Load actuator maps ────────────────────────────────────────────
     Sacc = load(accel_map_file);
     acc_cmd = make_col(get_first_existing_field(Sacc, {'Acc_Full', 'Acc_full'}));
     acc_force = make_col(get_first_existing_field(Sacc, {'Force_full', 'Force_Full'}));
@@ -53,6 +52,59 @@ function veh = load_vehicle_params(accel_map_file, brake_map_file)
     veh.brk.force_full = brk_force_sorted;
 
     veh.max_pedal_publish = 0.60;
+
+    % ── Compute acceleration limits from actuator maps ────────────────
+    % These are the ACTUAL physical limits of the vehicle at 60% pedal cap.
+    %
+    % For throttle:
+    %   Max pedal at 60% → max internal command → max tractive force
+    %   a_max = (F_trac_max - F_resist) / M
+    %   Use F_resist at v=0 for the most optimistic (highest) a_max
+    %
+    % For braking:
+    %   Max brake at 60% → max brake force
+    %   a_min = -(F_brake_max + F_resist) / M
+    %   Use F_resist at v=0 for the most conservative (least negative) a_min
+    %
+    % The longitudinal_model.m handles the detailed force balance at each
+    % timestep; these limits are for the controller to know its bounds.
+
+    % Max tractive force at 60% pedal
+    max_acc_cmd_60pct = max(veh.acc.acc_full) * veh.max_pedal_publish / ...
+                        (max(veh.acc.acc_full));  % = max * 0.6 / max = 0.6... no
+    % Actually: throttle_pct = (ACC_req / max(acc_full)) * 0.6
+    % So max throttle_pct = 0.6, which maps to ACC_internal = (0.6/0.6)*max(acc_full) = max(acc_full)
+    % Then F_drive_max = interp1(acc_full, force_full, max(acc_full))
+    F_trac_max = max(veh.acc.force_full);
+
+    % Max brake force at 60% pedal
+    % brake_pct = (BRK_req / max(brake_full)) * 0.6
+    % Max brake_pct = 0.6, maps to BRK_internal = max(brake_full)
+    % F_brake_max = interp1(brake_full, force_full, max(brake_full))
+    F_brake_max = max(veh.brk.force_full);
+
+    % Resistance at standstill (v=0)
+    F_resist_v0 = veh.A;  % = 45 N (B*0 + C*0 = 0)
+
+    % Compute acceleration limits
+    % a_max: net forward acceleration = (F_trac - F_resist) / M
+    veh.a_max_from_map = (F_trac_max - F_resist_v0) / veh.M;
+
+    % a_min: net braking deceleration = -(F_brake + F_resist) / M
+    % At v=0, F_resist is small so this gives the least aggressive braking
+    % At higher speeds, braking is actually stronger (resistance helps)
+    veh.a_min_from_map = -(F_brake_max + F_resist_v0) / veh.M;
+
+    % Store the raw force values for reference
+    veh.F_trac_max = F_trac_max;
+    veh.F_brake_max = F_brake_max;
+
+    % Print for verification
+    fprintf('  Actuator limits from maps (at 60%% pedal):\n');
+    fprintf('    Max tractive force:  %.1f N\n', F_trac_max);
+    fprintf('    Max braking force:   %.1f N\n', F_brake_max);
+    fprintf('    a_max (from map):    %.3f m/s^2\n', veh.a_max_from_map);
+    fprintf('    a_min (from map):    %.3f m/s^2\n', veh.a_min_from_map);
 end
 
 function out = get_first_existing_field(S, names)

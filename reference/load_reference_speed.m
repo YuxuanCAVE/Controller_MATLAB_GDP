@@ -1,4 +1,9 @@
 function ref = load_reference_speed(ref, speed_cfg)
+% LOAD_REFERENCE_SPEED  Load speed reference (constant or profile).
+%
+%   Speed profile smoothing is done in the TIME DOMAIN inside
+%   run_closed_loop.m (not here). This function loads the raw profile.
+
     switch speed_cfg.mode
         case "constant"
             ref.v_ref = speed_cfg.constant_value * ones(size(ref.x));
@@ -27,11 +32,4 @@ function ref = load_reference_speed(ref, speed_cfg)
     end
 
     ref.v_ref = ref.v_ref(:);
-
-    % ── Smooth the speed profile to respect acceleration limits ──────
-    % Converts step-like transitions into physically achievable ramps.
-    % Uses slightly below actual vehicle limits to leave headroom for
-    % the feedback controller (PID/LQR) to correct without saturating.
-    ref.v_ref_raw = ref.v_ref;   % keep original for comparison
-    ref.v_ref = smooth_speed_profile(ref.v_ref, 0.05, 1.8, -2.5);
 end

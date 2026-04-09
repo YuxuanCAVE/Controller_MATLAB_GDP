@@ -1,269 +1,256 @@
-# ControllerMatlab
+# ControllerMatlab — Kia Niro Path-Tracking Controller Framework
 
-MATLAB closed-loop path-following framework with:
+MATLAB closed-loop path-following framework for the Cranfield Kia Niro automated vehicle platform (GDP 2026).
 
-- lateral controllers: `mpc`, `stanley`, `pure_pursuit`
-- longitudinal controllers: `pid`, `lqr`
-- nonlinear vehicle plant for simulation
-- configurable speed reference, actuator delay, and comparison runs
+## Controllers Implemented
 
-The entry point is [main.m](/home/yuxuan/ControllerMatlab/main.m).
+| Controller | Type | Description |
+|-----------|------|-------------|
+| **Stanley** | Lateral (kinematic) | Heading + cross-track error correction at front axle |
+| **Pure Pursuit** | Lateral (geometric) | Lookahead-based geometric steering |
+| **MPC** | Lateral (dynamic) | Linear MPC with bicycle model, curvature preview, delay compensation |
+| **MPC Combined** | Lateral + Longitudinal | Single QP optimises steering AND acceleration simultaneously |
+| **PID** | Longitudinal | Classical proportional-integral-derivative speed controller |
+| **LQR** | Longitudinal | Optimal controller with integral action via DARE |
 
 ## Quick Start
 
-Open MATLAB in the project root and run:
-
 ```matlab
+% Open MATLAB in the project root, then:
 main
 ```
 
 All outputs are saved under `run/`.
 
-## Main Workflow
+## Changing the Controller
 
-The current workflow is:
-
-```text
-main
--> load config
--> load reference path
--> load reference speed
--> load vehicle parameters
--> run closed-loop simulation
--> save plots / result / summary
-```
-
-Core files:
-
-- [main.m](/home/yuxuan/ControllerMatlab/main.m): top-level entry
-- [config/default_config.m](/home/yuxuan/ControllerMatlab/config/default_config.m): all main settings
-- [simulation/run_closed_loop.m](/home/yuxuan/ControllerMatlab/simulation/run_closed_loop.m): closed-loop loop
-- [plotting/save_run_plots.m](/home/yuxuan/ControllerMatlab/plotting/save_run_plots.m): per-run plots
-- [plotting/save_longitudinal_comparison.m](/home/yuxuan/ControllerMatlab/plotting/save_longitudinal_comparison.m): PID/LQR comparison plots
-
-## What To Configure
-
-Most usage is controlled from [default_config.m](/home/yuxuan/ControllerMatlab/config/default_config.m).
-
-### Controller Selection
+Edit `config/default_config.m`:
 
 ```matlab
-cfg.controller.lateral = "mpc";         % "stanley" | "pure_pursuit" | "mpc"
-cfg.controller.longitudinal = "lqr";    % "pid" | "lqr"
-```
-
-- `lateral`: selects the steering controller
-- `longitudinal`: selects the speed controller
-
-## Simulation Settings
-
-```matlab
-cfg.sim.dt = 0.05;
-cfg.sim.T_end = 40;
-cfg.sim.progress_window = 80;
-```
-
-- `dt`: simulation sample time
-- `T_end`: maximum simulation duration
-- `progress_window`: local search window for the nearest reference point
-
-## Reference Path and Speed
-
-```matlab
-cfg.ref.path_file = fullfile('data', 'path_ref.mat');
-
-cfg.speed.mode = "profile";   % "constant" | "profile"
-cfg.speed.constant_value = 9.0;
-cfg.speed.profile_file = fullfile( ...
-    'data', 'reference_velocity', 'referencePath_Velocity_peak_velocity_5.mat');
-```
-
-- `path_file`: XY reference path
-- `speed.mode = "constant"`: use one fixed speed along the path
-- `speed.mode = "profile"`: use a speed profile from a MAT file
-- `speed.profile_file`: file containing `pathv_ref`
-
-Current speed-profile logic:
-
-- reads `pathv_ref`
-- uses samples `26:384`
-- matches the current path length of `359`
-
-## Vehicle and Actuator Settings
-
-```matlab
-cfg.vehicle.max_steer = deg2rad(35);
-cfg.vehicle.max_steer_rate = deg2rad(40);
-cfg.vehicle.delay.steer_s = 0.1;
-cfg.vehicle.delay.longitudinal_s = 0.1;
-```
-
-- `max_steer`: steering angle limit
-- `max_steer_rate`: steering rate limit
-- `delay.steer_s`: delay between lateral controller output and executed steering
-- `delay.longitudinal_s`: delay between longitudinal controller output and executed acceleration
-
-## Lateral Controller Parameters
-
-### Stanley
-
-```matlab
-cfg.stanley.k_cte
-cfg.stanley.k_soft
-cfg.stanley.k_yaw
-cfg.stanley.delta_ff_gain
-```
-
-- cross-track gain
-- low-speed softening term
-- heading-error gain
-- curvature feedforward gain
-
-### Pure Pursuit
-
-```matlab
-cfg.pure_pursuit.Ld_min
-cfg.pure_pursuit.Ld_gain
-cfg.pure_pursuit.Ld_max
-cfg.pure_pursuit.k_pp
-cfg.pure_pursuit.delta_ff_gain
-```
-
-- minimum / gain / maximum look-ahead distance
-- steering gain
-- curvature feedforward gain
-
-### MPC
-
-```matlab
-cfg.mpc.N
-cfg.mpc.Q
-cfg.mpc.R
-cfg.mpc.Rd
-cfg.mpc.kappa_ff_gain
-cfg.mpc.max_steer
-```
-
-- `N`: prediction horizon
-- `Q`: state-error weight matrix
-- `R`: steering-effort penalty
-- `Rd`: steering-rate-change penalty
-- `kappa_ff_gain`: curvature feedforward gain
-- `max_steer`: steering constraint used by MPC
-
-Current MPC type:
-
-- linear MPC
-- based on a linearized dynamic bicycle error model
-- solved as a QP
-
-## Longitudinal Controller Parameters
-
-### PID
-
-```matlab
-cfg.lon_pid.kp
-cfg.lon_pid.ki
-cfg.lon_pid.kd
-cfg.lon_pid.a_min
-cfg.lon_pid.a_max
-```
-
-- PID gains on speed error
-- desired acceleration limits
-
-### LQR
-
-```matlab
-cfg.lon_lqr.Q
-cfg.lon_lqr.R
-cfg.lon_lqr.a_min
-cfg.lon_lqr.a_max
-```
-
-- `Q`: weight on speed error and integrated speed error
-- `R`: penalty on desired acceleration effort
-- `a_min`, `a_max`: desired acceleration bounds
-
-Current LQR model:
-
-- longitudinal kinematic model
-- `v(k+1) = v(k) + a_des(k) * dt`
-
-## Run Modes
-
-### Single Run
-
-```matlab
-cfg.run.compare_longitudinal = false;
-```
-
-Runs one lateral controller and one longitudinal controller.
-
-Typical output folder:
-
-```text
-run/<timestamp>_<lateral>_<longitudinal>/
-```
-
-### Longitudinal Comparison Run
-
-```matlab
-cfg.run.compare_longitudinal = true;
-cfg.run.longitudinal_compare_set = ["pid", "lqr"];
-```
-
-Runs the same lateral controller with multiple longitudinal controllers.
-
-Typical output folder:
-
-```text
-run/<timestamp>_<lateral>_lon_compare/
-  pid/
-  lqr/
-  comparison_summary.txt
-  longitudinal_comparison.png
-```
-
-## Output Files
-
-Per single run or per case folder, typical files are:
-
-- `path_tracking.png`
-- `tracking_errors.png`
-- `longitudinal.png`
-- `lateral_dynamics.png`
-- `result.mat`
-- `summary.txt`
-
-Comparison mode also adds:
-
-- `comparison.mat`
-- `comparison_summary.txt`
-- `longitudinal_comparison.png`
-
-## Current Model Notes
-
-- Reference point selection uses [nearest_path_ref_point.m](/home/yuxuan/ControllerMatlab/utils/nearest_path_ref_point.m)
-- Longitudinal plant uses force balance plus pedal maps
-- Lateral simulation plant is nonlinear
-- MPC is linearized, not nonlinear MPC
-
-## Minimal Typical Usage
-
-### Run MPC + LQR with speed profile
-
-```matlab
+% Option 1: MPC lateral + LQR longitudinal (decoupled)
 cfg.controller.lateral = "mpc";
 cfg.controller.longitudinal = "lqr";
-cfg.speed.mode = "profile";
-cfg.run.compare_longitudinal = false;
+
+% Option 2: MPC Combined (lateral + longitudinal in one QP)
+cfg.controller.lateral = "mpc_combined";
+cfg.controller.longitudinal = "lqr";   % ignored, MPC handles both
+
+% Option 3: Stanley + PID
+cfg.controller.lateral = "stanley";
+cfg.controller.longitudinal = "pid";
+
+% Option 4: Pure Pursuit + LQR
+cfg.controller.lateral = "pure_pursuit";
+cfg.controller.longitudinal = "lqr";
 ```
 
-### Compare PID vs LQR under the same lateral controller
+## Changing the Speed Reference
 
 ```matlab
+% Constant speed (e.g. 5.0 m/s)
+cfg.speed.mode = "constant";
+cfg.speed.constant_value = 5.0;
+
+% Speed profile from .mat file
+cfg.speed.mode = "profile";
+cfg.speed.profile_file = fullfile('data', 'reference_velocity', ...
+    'referencePath_Velocity_peak_velocity_7.mat');
+```
+
+Available profiles: `peak_velocity_3.mat`, `peak_velocity_4.mat`, `peak_velocity_5.mat`, `peak_velocity_7.mat`.
+
+## Comparing Controllers
+
+```matlab
+% In default_config.m:
 cfg.controller.lateral = "mpc";
 cfg.run.compare_longitudinal = true;
 cfg.run.longitudinal_compare_set = ["pid", "lqr"];
 ```
+
+This runs MPC+PID and MPC+LQR back-to-back with comparison plots.
+
+## Running the Full Sweep (42 or 49 cases)
+
+```matlab
+run_tuning_sweep          % runs all test cases
+run_tuning_sweep(true)    % dry-run: prints test matrix only
+```
+
+Tests 7 controller combinations × 7 speed conditions against GDP requirements:
+- Peak lateral deviation < 0.6 m
+- Peak longitudinal deviation < 0.8 m
+
+## Project Structure
+
+```
+ControllerMatlab/
+├── main.m                          Entry point (single run or comparison)
+├── run_tuning_sweep.m              Automated 49-case GDP sweep
+│
+├── config/
+│   └── default_config.m            All tuning parameters
+│
+├── reference/
+│   ├── load_reference_path.m       Loads waypoints from path_ref.mat
+│   ├── load_reference_speed.m      Loads speed profile or constant
+│   ├── smooth_speed_profile.m      Rate-limits speed transitions
+│   ├── path_yaw.m                  Computes heading from waypoints
+│   └── path_curvature.m            Computes curvature from waypoints
+│
+├── controllers/
+│   ├── lateral/
+│   │   ├── mpc_lateral.m           MPC lateral-only (4 states, 1 input)
+│   │   ├── mpc_combined.m          MPC lateral+longitudinal (6 states, 2 inputs)
+│   │   ├── stanley_lateral.m       Stanley kinematic controller
+│   │   └── pure_pursuit_lateral.m  Pure Pursuit geometric controller
+│   └── longitudinal/
+│       ├── PID_controller.m        PID speed controller
+│       └── LQR_controller.m        LQR optimal speed controller
+│
+├── model/
+│   ├── load_vehicle_params.m       Kia Niro parameters + actuator maps
+│   ├── lateral_model.m             Plant wrapper (tires + dynamics)
+│   ├── lateral_tire_model.m        Magic Formula tire forces
+│   ├── longitudinal_model.m        Force balance + pedal-to-force maps
+│   └── coupled_bicycle_dynamics.m  3-DOF coupled bicycle model
+│
+├── simulation/
+│   └── run_closed_loop.m           Main simulation loop with timing
+│
+├── utils/
+│   ├── angle_wrap.m                Wraps angle to [-pi, pi]
+│   ├── nearest_path_ref_point.m    Segment projection + nearest point
+│   ├── rate_limit.m                Signal rate limiter
+│   └── track_errors.m              CTE and heading error computation
+│
+├── data/
+│   ├── path_ref.mat                Reference path waypoints
+│   ├── Acc_mapData_noSlope.mat     Throttle actuator map
+│   ├── brake_mapData_noSlope.mat   Brake actuator map
+│   └── reference_velocity/         Speed profiles (3/4/5/7 m/s)
+│
+└── run/                            Output directory (auto-created)
+    └── <timestamp>_<controller>/
+        ├── result.mat              Full simulation data
+        ├── summary.txt             Performance metrics
+        ├── path_tracking.png       Path plot
+        ├── tracking_errors.png     CTE, heading, lon dev, speed error
+        ├── speed_tracking.png      Speed + acceleration plots
+        ├── lateral_dynamics.png    Steering + lateral states
+        └── execution_timing.png    Controller computation time
+```
+
+## Vehicle Model
+
+The simulation plant is a coupled 3-DOF planar bicycle model for the Kia Niro:
+
+| Parameter | Value | Source |
+|-----------|-------|--------|
+| Mass | 1948 kg | Vehicle data |
+| Wheelbase | 2.720 m | Vehicle data |
+| Front axle to CG | 1.214 m | Vehicle data |
+| Yaw inertia | 2500 kg·m² | Estimated |
+| Resistance | 45 + 10v + 0.518v² N | Vehicle data |
+| Max steering | ±35° at 40°/s | DBW spec |
+| Steering delay | 0.1 s | Measured |
+| Longitudinal delay | 0.1 s | Measured |
+| Tire model | Pacejka Magic Formula | Estimated |
+| Max accel (60% pedal) | 3.372 m/s² | From Acc_mapData |
+| Max braking (60% pedal) | -7.357 m/s² | From brake_mapData |
+
+**Pedal-to-force conversion:**
+```
+ACC_req = interp1(Force_full, Acc_full, F_tractive)
+ACC_% = ACC_req / max(Acc_full) * 0.6
+```
+Same for braking. The 0.6 factor is a safety cap (60% max pedal).
+
+**Steering output for DBW:** Internal computation uses radians. For the Sygnal drive-by-wire unit, normalise to [-1, +1]:
+```
+steer_normalized = delta_rad / max_steer_rad
+% +1 = full left, -1 = full right
+```
+
+## GDP Requirements (Brief slide 13)
+
+| REQ | Description | Status |
+|-----|-------------|--------|
+| REQ-1 | Peak lateral deviation < 0.6 m | MPC passes at 0.5–7.0 m/s |
+| REQ-1 | Peak longitudinal deviation < 0.8 m | MPC+LQR passes at 0.5–2.0 m/s |
+| REQ-2 | Controller loop ≥ 10 Hz | PASS (MPC combined: 10 Hz, others: 20 Hz) |
+| REQ-3 | Model accounts for delays + dynamics | PASS (0.1s delays, 3DOF, Magic Formula) |
+
+## Testing Scenarios (Brief slide 14)
+
+| Scenario | Speed | Mode | Status |
+|----------|-------|------|--------|
+| GDP-S1 (Low) | 0.5 m/s | Constant | MPC+LQR: PASS |
+| GDP-S2 (Medium) | 2.0 m/s | Constant | MPC+LQR: PASS |
+| GDP-S3 (High) | 3/4/5/7 m/s | Profile | Lateral PASS, Longitudinal in progress |
+| GDP-S3-EXT | 10.0 m/s | Constant | All FAIL (needs high-speed tuning) |
+
+## Output Files Per Run
+
+Each run produces these files in the `run/` directory:
+
+| File | Contents |
+|------|----------|
+| `result.mat` | Full simulation data (log, metrics, config) |
+| `summary.txt` | RMS/Peak for lateral + longitudinal + timing |
+| `path_tracking.png` | Reference vs actual path |
+| `tracking_errors.png` | 4 panels: CTE, heading error, lon deviation, speed error (with RMS/Peak annotations) |
+| `speed_tracking.png` | Speed reference vs actual + acceleration commands |
+| `lateral_dynamics.png` | Steering commands + lateral velocity/yaw rate |
+| `execution_timing.png` | Controller computation time vs loop period |
+
+## Expected Results to Show
+
+For a complete presentation or report, show these for each controller tested:
+
+1. **Path tracking plot** — reference vs actual trajectory
+2. **Lateral error** — CTE time trace with RMS and peak values
+3. **Heading error** — time trace with RMS
+4. **Longitudinal deviation** — position error time trace with RMS and peak
+5. **Speed tracking** — reference vs actual speed
+6. **Speed error** — time trace with RMS and peak
+7. **Acceleration commands** — commanded vs actual
+8. **Steering commands** — commanded vs executed (shows delay + rate limit effect)
+9. **Execution timing** — computation time vs loop period (proves real-time feasibility)
+10. **Comparison table** — all controllers side-by-side with pass/fail
+11. **Pass/fail heatmap** — controllers vs GDP scenarios
+
+## Key Tuning Parameters
+
+### MPC Combined (lateral + longitudinal)
+```matlab
+cfg.mpc_combined.N          % prediction horizon (steps)
+cfg.mpc_combined.dt_ctrl    % control period (0.10 = 10 Hz)
+cfg.mpc_combined.Q          % 6×6 state weights [ey, epsi, vy, r, ev, z_lon]
+cfg.mpc_combined.R          % 2×2 input weights [delta, a_des]
+cfg.mpc_combined.Rd         % 2×2 input rate weights
+cfg.mpc_combined.a_min/max  % acceleration limits (from maps)
+```
+
+### MPC Lateral Only
+```matlab
+cfg.mpc.N, cfg.mpc.Q, cfg.mpc.R, cfg.mpc.Rd
+```
+
+### PID Longitudinal
+```matlab
+cfg.lon_pid.kp/ki/kd        % PID gains
+cfg.lon_pid.a_min/a_max     % acceleration limits
+```
+
+### LQR Longitudinal
+```matlab
+cfg.lon_lqr.Q               % diag([speed_error, integral_error])
+cfg.lon_lqr.R               % acceleration effort penalty
+```
+
+## Dependencies
+
+- MATLAB R2020b or later
+- Optimization Toolbox (for `quadprog` used by MPC)
+- No external toolboxes required for PID/LQR/Stanley/Pure Pursuit
