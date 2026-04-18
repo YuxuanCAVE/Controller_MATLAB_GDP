@@ -1,5 +1,5 @@
 function cfg = default_config()
-    cfg.controller.lateral = "mpc_kbm";  % "stanley" | "pure_pursuit" | "mpc_kinematic" | "nmpc_kbm" | "fake_controller"
+    cfg.controller.lateral = "nmpc_kbm";  % "stanley" | "pure_pursuit" | "mpc_kinematic" | "nmpc_kbm" | "fake_controller"
     cfg.controller.longitudinal = "pid";      % "pid" | "lqr" | "lqr_force_balance" | "fake_controller"
 
     cfg.sim.dt = 0.1;
@@ -12,18 +12,18 @@ function cfg = default_config()
     cfg.vehicle.accel_map_file = fullfile('data', 'Acc_mapData_noSlope.mat');
     cfg.vehicle.brake_map_file = fullfile('data', 'brake_mapData_noSlope.mat');
     cfg.vehicle.max_steer = deg2rad(35);       % max steering angle (rad)
-    cfg.vehicle.max_steer_rate = deg2rad(35);   % max steering rate (rad/s)
     cfg.vehicle.delay.steer_s = 0.1;            % steering actuator delay (s)
     cfg.vehicle.delay.longitudinal_s = 0.1;     % throttle/brake actuator delay (s)
+    steer_rate_limit = deg2rad(35);             % controller steering-rate limit (rad/s)
 
     % ── Initial vehicle pose ───────────────────────────────────────────
     cfg.init.mode = "path_pose";       % "path_pose" | "global_pose"
     cfg.init.anchor_mode = "index";    % "index"
     cfg.init.path_index = 1;
     cfg.init.ex0_m = 0.0;              % tangent offset [m]
-    cfg.init.ey0_m = 0.0;              % normal offset [m]
+    cfg.init.ey0_m = 3.0;              % normal offset [m]
     cfg.init.yaw_offset_deg = 0.0;
-    cfg.init.v0_mps = 0.5;
+    cfg.init.v0_mps = 0;
 
     % ── Speed reference ───────────────────────────────────────────────
     % To use constant speed: set mode = "constant" and constant_value
@@ -58,31 +58,32 @@ function cfg = default_config()
     % Linear MPC lateral only (global-error + linearised full KBM)
     cfg.mpc_kinematic.Ts = cfg.sim.dt;
     cfg.mpc_kinematic.N = 5;
-    cfg.mpc_kinematic.q_X = 5.0;
-    cfg.mpc_kinematic.q_Y = 5.0;
-    cfg.mpc_kinematic.q_psi = 3.0;
-    cfg.mpc_kinematic.r_delta = 0.2;
+    cfg.mpc_kinematic.q_X = 20.0;
+    cfg.mpc_kinematic.q_Y = 20.0;
+    cfg.mpc_kinematic.q_psi = 1.0;
+    cfg.mpc_kinematic.r_delta = 5.2;
     cfg.mpc_kinematic.r_u = 0.12;
     cfg.mpc_kinematic.r_du = 0.3;
     cfg.mpc_kinematic.delta_min = -cfg.vehicle.max_steer;
     cfg.mpc_kinematic.delta_max = cfg.vehicle.max_steer;
-    cfg.mpc_kinematic.u_min = -cfg.vehicle.max_steer_rate;
-    cfg.mpc_kinematic.u_max = cfg.vehicle.max_steer_rate;
+    cfg.mpc_kinematic.u_min = -steer_rate_limit;
+    cfg.mpc_kinematic.u_max = steer_rate_limit;
     cfg.mpc_kinematic.use_ay_constraint = false;
     cfg.mpc_kinematic.ay_max = 4.0;
 
     % Nonlinear MPC lateral only (global-error + full nonlinear KBM)
     cfg.nmpc_kbm.Ts = cfg.sim.dt;
-    cfg.nmpc_kbm.N = 15;
-    cfg.nmpc_kbm.q_X = 2.0;
-    cfg.nmpc_kbm.q_Y = 8.0;
-    cfg.nmpc_kbm.q_psi = 3.0;
-    cfg.nmpc_kbm.r_delta = 0.2;
-    cfg.nmpc_kbm.r_u = 0.05;
+    cfg.nmpc_kbm.N = 10;
+    cfg.nmpc_kbm.q_X = 6.0;
+    cfg.nmpc_kbm.q_Y = 12.0;
+    cfg.nmpc_kbm.q_psi = 4.0;
+    cfg.nmpc_kbm.r_delta = 24;
+    cfg.nmpc_kbm.r_du = 24;
     cfg.nmpc_kbm.delta_min = -cfg.vehicle.max_steer;
     cfg.nmpc_kbm.delta_max = cfg.vehicle.max_steer;
-    cfg.nmpc_kbm.u_min = -cfg.vehicle.max_steer_rate;
-    cfg.nmpc_kbm.u_max = cfg.vehicle.max_steer_rate;
+    cfg.nmpc_kbm.delta_rate_max = steer_rate_limit;
+    cfg.nmpc_kbm.u_min = -steer_rate_limit;
+    cfg.nmpc_kbm.u_max = steer_rate_limit;
     cfg.nmpc_kbm.use_ay_constraint = false;
     cfg.nmpc_kbm.ay_max = 4.0;
     cfg.nmpc_kbm.max_iterations = 100;

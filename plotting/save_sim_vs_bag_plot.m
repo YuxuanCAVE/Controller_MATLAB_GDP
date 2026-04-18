@@ -89,7 +89,7 @@ function saved = save_sim_vs_bag_plot(log, run_dir, bag_mat_path, title_suffix)
     grid on;
 
     subplot(2, 2, 2);
-    plot(t_c, -steer_sim, 'Color', sim_color, 'LineWidth', 1.0, 'DisplayName', 'Simulation');
+    plot(t_c, steer_sim, 'Color', sim_color, 'LineWidth', 1.0, 'DisplayName', 'Simulation');
     hold on;
     plot(t_c, steer_bag, 'Color', bag_color, 'LineWidth', 1.8, 'DisplayName', 'Bag');
     plot(t_c(bag_marker_idx), steer_bag(bag_marker_idx), '.', 'Color', bag_color, 'HandleVisibility', 'off');

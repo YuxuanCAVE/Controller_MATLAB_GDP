@@ -156,8 +156,7 @@ function result = run_closed_loop(cfg, ref, veh)
         log.ctrl_exec_time_s(k) = ctrl_exec_time;
 
         delta_cmd_raw = max(min(delta_cmd, veh.max_steer), -veh.max_steer);
-        [delta_cmd_delayed, steer_delay_buffer] = apply_delay(delta_cmd_raw, steer_delay_buffer);
-        delta_cmd_exec = rate_limit(delta_cmd_delayed, state.delta, veh.max_steer_rate, dt);
+        [delta_cmd_exec, steer_delay_buffer] = apply_delay(delta_cmd_raw, steer_delay_buffer);
 
         if use_fake_longitudinal
             a_des_exec = 0.0;

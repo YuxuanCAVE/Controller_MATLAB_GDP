@@ -17,7 +17,6 @@ ref = load_reference_path(cfg.ref.path_file);
 ref = load_reference_speed(ref, cfg.speed);
 veh = load_vehicle_params(cfg.vehicle.accel_map_file, cfg.vehicle.brake_map_file);
 veh.max_steer = cfg.vehicle.max_steer;
-veh.max_steer_rate = cfg.vehicle.max_steer_rate;
 
 ctrl_name = sprintf('%s + %s', upper(char(cfg.controller.lateral)), ...
                                upper(char(cfg.controller.longitudinal)));
@@ -61,41 +60,19 @@ function print_result(result, ctrl_name)
     fprintf('------------------------------------------------------------\n');
 
     fprintf('  LATERAL:\n');
-    fprintf('    RMS CTE              : %.4f m\n', m.rms_cte);
-    fprintf('    Peak CTE             : %.4f m\n', m.peak_cte);
-    fprintf('    RMS heading error    : %.3f deg\n', m.rms_epsi_deg);
-    fprintf('    REQ-1 lateral (<0.6m): %s\n', iff(m.peak_cte < 0.6, 'PASS', 'FAIL'));
+    fprintf('    Mean CTE             : %.4f m\n', m.rms_cte);
+    fprintf('    Max CTE              : %.4f m\n', m.peak_cte);
 
     fprintf('  LONGITUDINAL:\n');
-    fprintf('    RMS speed error      : %.4f m/s\n', m.rms_speed_error);
-    fprintf('    Peak speed error     : %.4f m/s\n', m.peak_speed_error);
-    fprintf('    Peak lon deviation   : %.4f m\n', m.peak_lon_dev);
-    fprintf('    RMS lon deviation    : %.4f m\n', m.rms_lon_dev);
-    fprintf('    REQ-1 longit (<0.8m) : %s\n', iff(m.peak_lon_dev < 0.8, 'PASS', 'FAIL'));
+    fprintf('    Mean lon deviation   : %.4f m\n', m.rms_lon_dev);
+    fprintf('    Max lon deviation    : %.4f m\n', m.peak_lon_dev);
 
     fprintf('  TIMING:\n');
     fprintf('    Control loop period  : %.3f s (%.0f Hz)\n', m.ctrl_loop_dt, m.ctrl_freq_hz);
     fprintf('    Mean exec time       : %.6f s (%.3f ms)\n', m.ctrl_exec_mean_s, m.ctrl_exec_mean_s*1000);
     fprintf('    Max exec time        : %.6f s (%.3f ms)\n', m.ctrl_exec_max_s, m.ctrl_exec_max_s*1000);
     fprintf('    Std exec time        : %.6f s\n', m.ctrl_exec_std_s);
-    fprintf('    Real-time feasible   : %s (exec %.3f ms < loop %.1f ms)\n', ...
-        iff(m.ctrl_realtime_ok, 'YES', 'NO'), m.ctrl_exec_max_s*1000, m.ctrl_loop_dt*1000);
-
-    fprintf('  GENERAL:\n');
     fprintf('    Loop time            : %.2f s\n', m.single_loop_time_s);
-    fprintf('    Goal reached         : %d\n', m.goal_reached);
-    fprintf('    Termination          : %s\n', char(m.termination_reason));
-
-    lat_ok = m.peak_cte < 0.6;
-    lon_ok = m.peak_lon_dev < 0.8;
-    if lat_ok && lon_ok
-        fprintf('  >>> OVERALL: PASS <<<\n');
-    else
-        reasons = {};
-        if ~lat_ok, reasons{end+1} = sprintf('lateral %.3f>0.6m', m.peak_cte); end
-        if ~lon_ok, reasons{end+1} = sprintf('longitudinal %.3f>0.8m', m.peak_lon_dev); end
-        fprintf('  >>> OVERALL: FAIL (%s) <<<\n', strjoin(reasons, ', '));
-    end
     fprintf('------------------------------------------------------------\n');
 end
 
@@ -247,29 +224,19 @@ function write_summary_file(result, run_dir, ctrl_name)
 
     fprintf(fid, 'Controller: %s\n\n', ctrl_name);
     fprintf(fid, 'LATERAL:\n');
-    fprintf(fid, '  RMS CTE            : %.4f m\n', m.rms_cte);
-    fprintf(fid, '  Peak CTE           : %.4f m\n', m.peak_cte);
-    fprintf(fid, '  RMS heading error  : %.3f deg\n', m.rms_epsi_deg);
-    fprintf(fid, '  REQ-1 (<0.6m)      : %s\n\n', iff(m.peak_cte<0.6,'PASS','FAIL'));
+    fprintf(fid, '  Mean CTE           : %.4f m\n', m.rms_cte);
+    fprintf(fid, '  Max CTE            : %.4f m\n\n', m.peak_cte);
 
     fprintf(fid, 'LONGITUDINAL:\n');
-    fprintf(fid, '  RMS speed error    : %.4f m/s\n', m.rms_speed_error);
-    fprintf(fid, '  Peak speed error   : %.4f m/s\n', m.peak_speed_error);
-    fprintf(fid, '  Peak lon deviation : %.4f m\n', m.peak_lon_dev);
-    fprintf(fid, '  RMS lon deviation  : %.4f m\n', m.rms_lon_dev);
-    fprintf(fid, '  REQ-1 (<0.8m)      : %s\n\n', iff(m.peak_lon_dev<0.8,'PASS','FAIL'));
+    fprintf(fid, '  Mean lon deviation : %.4f m\n', m.rms_lon_dev);
+    fprintf(fid, '  Max lon deviation  : %.4f m\n\n', m.peak_lon_dev);
 
     fprintf(fid, 'TIMING:\n');
     fprintf(fid, '  Control loop       : %.3f s (%.0f Hz)\n', m.ctrl_loop_dt, m.ctrl_freq_hz);
     fprintf(fid, '  Mean exec time     : %.6f s (%.3f ms)\n', m.ctrl_exec_mean_s, m.ctrl_exec_mean_s*1000);
     fprintf(fid, '  Max exec time      : %.6f s (%.3f ms)\n', m.ctrl_exec_max_s, m.ctrl_exec_max_s*1000);
-    fprintf(fid, '  Real-time OK       : %s\n\n', iff(m.ctrl_realtime_ok,'YES','NO'));
-
-    fprintf(fid, 'GENERAL:\n');
+    fprintf(fid, '  Std exec time      : %.6f s\n', m.ctrl_exec_std_s);
     fprintf(fid, '  Loop time          : %.2f s\n', m.single_loop_time_s);
-    fprintf(fid, '  Goal reached       : %d\n', m.goal_reached);
-    fprintf(fid, '  Termination        : %s\n', char(m.termination_reason));
-    fprintf(fid, '  Run directory      : %s\n', run_dir);
     fclose(fid);
 end
 

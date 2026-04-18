@@ -25,7 +25,6 @@ function run_tuning_sweep(dry_run)
     ref_base = load_reference_path(cfg_base.ref.path_file);
     veh = load_vehicle_params(cfg_base.vehicle.accel_map_file, cfg_base.vehicle.brake_map_file);
     veh.max_steer = cfg_base.vehicle.max_steer;
-    veh.max_steer_rate = cfg_base.vehicle.max_steer_rate;
 
     a_max_map = veh.a_max_from_map;
     a_min_map = veh.a_min_from_map;

@@ -1,29 +1,26 @@
 function [delta_cmd, nmpc] = nmpc_kbm_lateral(state, ref, veh, dt, p, idx_hint, window)
-% NMPC_KBM_LATERAL  Lateral NMPC using the full nonlinear kinematic bicycle model.
+% NMPC_KBM_LATERAL  Lateral NMPC using a nonlinear kinematic bicycle model.
 %
 % State:
-%   x_k = [X_k; Y_k; psi_k; delta_k]
+%   x_k = [X_k; Y_k; psi_k]
 %
 % Input:
-%   u_k = delta_dot_k
+%   u_k = delta_k
 %
-% Continuous-time model:
-%   X_dot     = v * cos(psi + beta(delta))
-%   Y_dot     = v * sin(psi + beta(delta))
-%   psi_dot   = v / l_r * sin(beta(delta))
-%   delta_dot = u
+% Prediction model:
+%   X_{k+1}   = X_k + Ts * v_k * cos(psi_k + beta(delta_k))
+%   Y_{k+1}   = Y_k + Ts * v_k * sin(psi_k + beta(delta_k))
+%   psi_{k+1} = psi_k + Ts * v_k / l_r * sin(beta(delta_k))
 %
 %   beta(delta) = atan((l_r / L) * tan(delta))
 %
-% Discretisation:
-%   Forward Euler with sample time Ts
-%
 % Cost:
-%   sum_{k=0}^{N-1} q_X e_X^2 + q_Y e_Y^2 + q_psi e_psi^2 + r_delta delta^2 + r_u u^2
+%   sum_{k=0}^{N-1} q_X e_X^2 + q_Y e_Y^2 + q_psi e_psi^2
+%                   + r_delta delta_k^2 + r_du (delta_k - delta_{k-1})^2
 %
 % Constraints:
 %   delta_min <= delta_k <= delta_max
-%   u_min     <= u_k     <= u_max
+%   |delta_k - delta_{k-1}| <= delta_rate_max * Ts
 %   optional: |a_y| <= a_y_max with a_y = v^2 / L * tan(delta)
 
     if nargin < 6
@@ -34,16 +31,12 @@ function [delta_cmd, nmpc] = nmpc_kbm_lateral(state, ref, veh, dt, p, idx_hint, 
     end
 
     Ts = get_sample_time(p, dt);
-    x0 = [state.x; state.y; state.yaw; state.delta];
+    x0 = [state.x; state.y; state.yaw];
 
-    preview = build_reference_preview(state, ref, Ts, p, idx_hint, window);
-    problem = build_nmpc_problem(x0, preview, veh, p, Ts);
+    [x_pred0, preview] = build_reference_preview(state, ref, veh, Ts, p, idx_hint, window);
+    problem = build_nmpc_problem(x0, x_pred0, preview, veh, p, Ts, state.delta);
     nmpc = solve_nmpc_problem(problem, p);
-
-    % Apply the first steering-rate input over one sample to obtain
-    % the commanded steering angle that will later pass through the
-    % existing delay and rate-limiting actuator chain.
-    delta_cmd = state.delta + Ts * nmpc.u0;
+    delta_cmd = nmpc.delta0;
 end
 
 function Ts = get_sample_time(p, dt_default)
@@ -54,14 +47,8 @@ function Ts = get_sample_time(p, dt_default)
     end
 end
 
-function preview = build_reference_preview(state, ref, Ts, p, idx_hint, window)
-% Build the known parameter / reference data used by the NMPC problem:
-%   - reference global pose [X_r,k, Y_r,k, psi_r,k]
-%   - known speed parameter v_k at each prediction step
-%
-% For this lateral-only NMPC, the full prediction horizon uses the current
-% measured speed as a known parameter sequence:
-%   v_k = v_measured,  k = 0,...,N-1
+function [x_pred0, preview] = build_reference_preview(state, ref, veh, Ts, p, idx_hint, window)
+% Build the reference preview used by the NMPC problem.
 
     idx = nearest_path_ref_point( ...
         state.x, state.y, ref.x, ref.y, idx_hint, window);
@@ -75,6 +62,7 @@ function preview = build_reference_preview(state, ref, Ts, p, idx_hint, window)
 
     speed_measured = max(get_speed(state), 0.0);
     idx_cursor = idx;
+    x_pred0 = [state.x; state.y; state.yaw];
 
     Xr = zeros(N, 1);
     Yr = zeros(N, 1);
@@ -82,11 +70,8 @@ function preview = build_reference_preview(state, ref, Ts, p, idx_hint, window)
     v_known = zeros(N, 1);
 
     for k = 1:N
-        if k > 1
-            idx_advance = max(1, round(speed_measured * Ts / ds_local));
-            idx_cursor = min(idx_cursor + idx_advance, n_ref);
-        end
-
+        idx_advance = max(1, round(speed_measured * Ts / ds_local));
+        idx_cursor = min(idx_cursor + idx_advance, n_ref);
         Xr(k) = ref.x(idx_cursor);
         Yr(k) = ref.y(idx_cursor);
         psir(k) = get_ref_heading(ref, idx_cursor);
@@ -97,7 +82,7 @@ function preview = build_reference_preview(state, ref, Ts, p, idx_hint, window)
     preview.Yr = Yr;
     preview.psir = psir;
     preview.v = v_known;
-    preview.idx0 = idx;
+    preview.idx0 = idx_cursor;
 end
 
 function psi_ref = get_ref_heading(ref, idx)
@@ -113,32 +98,27 @@ function psi_ref = get_ref_heading(ref, idx)
     end
 end
 
-function problem = build_nmpc_problem(x0, preview, veh, p, Ts)
-% Gather everything needed by the solver. This keeps the solver call
-% separate from model prediction, cost construction, and constraints.
+function problem = build_nmpc_problem(x0, x_pred0, preview, veh, p, Ts, delta_last)
+% Gather everything needed by the solver.
 
     N = p.N;
 
     problem.x0 = x0;
+    problem.x_pred0 = x_pred0;
     problem.preview = preview;
     problem.veh = veh;
     problem.p = p;
     problem.Ts = Ts;
-
-    if isfield(p, 'u_init') && ~isempty(p.u_init)
-        u_init = p.u_init * ones(N, 1);
-    else
-        u_init = zeros(N, 1);
-    end
-
-    problem.u_init = u_init;
-    problem.lb = p.u_min * ones(N, 1);
-    problem.ub = p.u_max * ones(N, 1);
+    problem.delta_prev = delta_last;
+    problem.u_init = build_initial_guess(problem);
+    problem.lb = p.delta_min * ones(N, 1);
+    problem.ub = p.delta_max * ones(N, 1);
+    [problem.A, problem.b] = build_rate_constraints(problem);
 end
 
 function nmpc = solve_nmpc_problem(problem, p)
 % Solve:
-%   min_{u_0,...,u_{N-1}} J
+%   min_{delta_0,...,delta_{N-1}} J
 % subject to:
 %   - nonlinear KBM prediction model
 %   - steering angle bounds
@@ -159,25 +139,25 @@ function nmpc = solve_nmpc_problem(problem, p)
         [U_opt, J_opt, exitflag, output] = fmincon( ...
             cost_fun, ...
             problem.u_init, ...
-            [], [], [], [], ...
+            problem.A, problem.b, [], [], ...
             problem.lb, problem.ub, ...
             nonlcon, ...
             opts);
 
-        [x_pred, ay_pred] = predict_kbm_trajectory(problem.x0, U_opt, problem.preview.v, problem.veh, problem.Ts);
+        [x_pred, ay_pred] = predict_kbm_trajectory(problem.x_pred0, U_opt, problem.preview.v, problem.veh, problem.Ts);
         status = "success";
     catch solver_err
-        U_opt = zeros(N, 1);
+        U_opt = problem.u_init;
         J_opt = NaN;
         exitflag = -999;
         output.message = solver_err.message;
         output.iterations = 0;
-        [x_pred, ay_pred] = predict_kbm_trajectory(problem.x0, U_opt, problem.preview.v, problem.veh, problem.Ts);
+        [x_pred, ay_pred] = predict_kbm_trajectory(problem.x_pred0, U_opt, problem.preview.v, problem.veh, problem.Ts);
         status = "solver_error";
     end
 
-    nmpc.u0 = U_opt(1);
-    nmpc.u_seq = U_opt;
+    nmpc.delta0 = U_opt(1);
+    nmpc.delta_seq = U_opt;
     nmpc.x_pred = x_pred;
     nmpc.ay_pred = ay_pred;
     nmpc.cost = J_opt;
@@ -186,55 +166,51 @@ function nmpc = solve_nmpc_problem(problem, p)
     nmpc.status = status;
     nmpc.ref_preview = [problem.preview.Xr, problem.preview.Yr, problem.preview.psir];
     nmpc.v_preview = problem.preview.v;
+    remember_last_delta_seq(U_opt);
 end
 
 function J = nmpc_stage_cost(U, problem)
-% Implements exactly the requested stage cost:
+% Stage cost:
 %   J = sum_{k=0}^{N-1} q_X e_X^2 + q_Y e_Y^2 + q_psi e_psi^2
-%                     + r_delta delta_k^2 + r_u u_k^2
-% with no terminal cost.
+%                     + r_delta delta_k^2 + r_du (delta_k - delta_{k-1})^2
 
-    [x_pred, ~] = predict_kbm_trajectory(problem.x0, U, problem.preview.v, problem.veh, problem.Ts);
+    [x_pred, ~] = predict_kbm_trajectory(problem.x_pred0, U, problem.preview.v, problem.veh, problem.Ts);
 
     q_X = problem.p.q_X;
     q_Y = problem.p.q_Y;
     q_psi = problem.p.q_psi;
     r_delta = problem.p.r_delta;
-    r_u = problem.p.r_u;
+    r_du = get_r_du(problem.p);
 
     J = 0.0;
+    delta_prev = problem.delta_prev;
     for k = 1:problem.p.N
-        e_X = x_pred(1, k) - problem.preview.Xr(k);
-        e_Y = x_pred(2, k) - problem.preview.Yr(k);
-        e_psi = angle_wrap(x_pred(3, k) - problem.preview.psir(k));
-        delta_k = x_pred(4, k);
-        u_k = U(k);
+        e_X = x_pred(1, k + 1) - problem.preview.Xr(k);
+        e_Y = x_pred(2, k + 1) - problem.preview.Yr(k);
+        e_psi = angle_wrap(x_pred(3, k + 1) - problem.preview.psir(k));
+        delta_k = U(k);
+        ddelta_k = delta_k - delta_prev;
 
         J = J ...
             + q_X * e_X^2 ...
             + q_Y * e_Y^2 ...
             + q_psi * e_psi^2 ...
             + r_delta * delta_k^2 ...
-            + r_u * u_k^2;
+            + r_du * ddelta_k^2;
+        delta_prev = delta_k;
     end
 end
 
 function [c, ceq] = nmpc_constraints(U, problem)
-% Nonlinear constraints for:
-%   - steering angle bounds delta_min <= delta_k <= delta_max
+% Nonlinear constraints:
 %   - optional lateral acceleration bound |a_y| <= a_y_max
 %
-% Steering-rate bounds are enforced directly through lower/upper bounds on U.
-% The initial state equality x_0 = x_measured is enforced by construction:
-% prediction starts from the measured state problem.x0.
+% Steering angle bounds and steering-rate bounds are enforced by the box
+% bounds and linear constraints assembled in build_nmpc_problem().
 
-    [x_pred, ay_pred] = predict_kbm_trajectory(problem.x0, U, problem.preview.v, problem.veh, problem.Ts);
+    [~, ay_pred] = predict_kbm_trajectory(problem.x_pred0, U, problem.preview.v, problem.veh, problem.Ts);
 
-    delta_seq = x_pred(4, 2:end);
-    c = [
-        delta_seq - problem.p.delta_max;
-        problem.p.delta_min - delta_seq
-    ];
+    c = [];
 
     if isfield(problem.p, 'use_ay_constraint') && problem.p.use_ay_constraint
         c = [
@@ -248,17 +224,10 @@ function [c, ceq] = nmpc_constraints(U, problem)
 end
 
 function [x_pred, ay_pred] = predict_kbm_trajectory(x0, U, v_known, veh, Ts)
-% Discrete-time nonlinear KBM prediction using forward Euler:
-%
-%   X_{k+1}     = X_k + Ts * v_k * cos(psi_k + beta_k)
-%   Y_{k+1}     = Y_k + Ts * v_k * sin(psi_k + beta_k)
-%   psi_{k+1}   = psi_k + Ts * v_k / l_r * sin(beta_k)
-%   delta_{k+1} = delta_k + Ts * u_k
-%
-%   beta_k = atan((l_r / L) * tan(delta_k))
+% Discrete-time nonlinear KBM prediction using forward Euler.
 
     N = numel(U);
-    x_pred = zeros(4, N + 1);
+    x_pred = zeros(3, N + 1);
     ay_pred = zeros(N, 1);
     x_pred(:, 1) = x0;
 
@@ -269,19 +238,111 @@ function [x_pred, ay_pred] = predict_kbm_trajectory(x0, U, v_known, veh, Ts)
         X_k = x_pred(1, k);
         Y_k = x_pred(2, k);
         psi_k = x_pred(3, k);
-        delta_k = x_pred(4, k);
         v_k = v_known(k);
-        u_k = U(k);
+        delta_k = U(k);
 
         beta_k = atan((lr / max(L, 1e-6)) * tan(delta_k));
 
-        x_pred(1, k+1) = X_k + Ts * v_k * cos(psi_k + beta_k);
-        x_pred(2, k+1) = Y_k + Ts * v_k * sin(psi_k + beta_k);
-        x_pred(3, k+1) = angle_wrap(psi_k + Ts * (v_k / max(lr, 1e-6)) * sin(beta_k));
-        x_pred(4, k+1) = delta_k + Ts * u_k;
+        x_pred(1, k + 1) = X_k + Ts * v_k * cos(psi_k + beta_k);
+        x_pred(2, k + 1) = Y_k + Ts * v_k * sin(psi_k + beta_k);
+        x_pred(3, k + 1) = angle_wrap(psi_k + Ts * (v_k / max(lr, 1e-6)) * sin(beta_k));
 
         ay_pred(k) = v_k^2 / max(L, 1e-6) * tan(delta_k);
     end
+end
+
+function u_init = build_initial_guess(problem)
+    N = problem.p.N;
+    delta_prev = problem.delta_prev;
+    delta_rate_max = get_delta_rate_max(problem.p);
+    ddelta_max = delta_rate_max * problem.Ts;
+    last_delta_seq = delta_seq_memory('get');
+
+    if isempty(last_delta_seq) || numel(last_delta_seq) ~= N
+        u_init = delta_prev * ones(N, 1);
+    else
+        u_init = [last_delta_seq(2:end); last_delta_seq(end)];
+    end
+
+    u_init(1) = clamp(u_init(1), delta_prev - ddelta_max, delta_prev + ddelta_max);
+    for k = 2:N
+        u_init(k) = clamp(u_init(k), u_init(k - 1) - ddelta_max, u_init(k - 1) + ddelta_max);
+    end
+    u_init = min(max(u_init, problem.p.delta_min), problem.p.delta_max);
+
+    delta_seq_memory('set', u_init);
+end
+
+function remember_last_delta_seq(U_opt)
+    delta_seq_memory('set', U_opt);
+end
+
+function seq = delta_seq_memory(action, seq_in)
+    persistent last_delta_seq
+
+    if nargin < 1
+        action = 'get';
+    end
+
+    switch action
+        case 'set'
+            last_delta_seq = seq_in;
+        case 'clear'
+            last_delta_seq = [];
+    end
+
+    if isempty(last_delta_seq)
+        seq = [];
+    else
+        seq = last_delta_seq;
+    end
+end
+
+function [A, b] = build_rate_constraints(problem)
+    N = problem.p.N;
+    delta_prev = problem.delta_prev;
+    delta_rate_max = get_delta_rate_max(problem.p);
+    ddelta_max = delta_rate_max * problem.Ts;
+    slack = 1e-6;
+
+    A = zeros(2 * N, N);
+    b = zeros(2 * N, 1);
+    A(1, 1) = 1;
+    b(1) = delta_prev + ddelta_max + slack;
+    A(2, 1) = -1;
+    b(2) = -delta_prev + ddelta_max + slack;
+
+    for k = 2:N
+        r = 2 * k - 1;
+        A(r, k) = 1;
+        A(r, k - 1) = -1;
+        b(r) = ddelta_max + slack;
+        A(r + 1, k) = -1;
+        A(r + 1, k - 1) = 1;
+        b(r + 1) = ddelta_max + slack;
+    end
+end
+
+function r_du = get_r_du(p)
+    if isfield(p, 'r_du') && ~isempty(p.r_du)
+        r_du = p.r_du;
+    else
+        r_du = 0.0;
+    end
+end
+
+function delta_rate_max = get_delta_rate_max(p)
+    if isfield(p, 'delta_rate_max') && ~isempty(p.delta_rate_max)
+        delta_rate_max = p.delta_rate_max;
+    elseif isfield(p, 'u_max') && ~isempty(p.u_max)
+        delta_rate_max = p.u_max;
+    else
+        delta_rate_max = inf;
+    end
+end
+
+function y = clamp(x, lo, hi)
+    y = min(max(x, lo), hi);
 end
 
 function v = get_speed(state)
